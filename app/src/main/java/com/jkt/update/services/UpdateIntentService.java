@@ -99,6 +99,7 @@ public class UpdateIntentService extends IntentService {
         try {
             URL url = new URL(intent.getStringExtra("downUrl"));
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(10000);
             conn.setRequestProperty("Accept-Encoding", "identity");
             conn.connect();
             int length = conn.getContentLength();
