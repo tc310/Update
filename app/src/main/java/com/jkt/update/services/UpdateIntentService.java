@@ -2,6 +2,7 @@ package com.jkt.update.services;
 
 import android.app.IntentService;
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -23,6 +24,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+
 /**
  * Created by 天哥哥 at 2017/2/5 11:33
  */
@@ -32,6 +34,8 @@ public class UpdateIntentService extends IntentService {
     private RemoteViews mRemoteViews;
     private Notification mNotification;
     private Handler mUpdateHandler;
+    private String mChannelId = "updateChannel";
+
 
     public UpdateIntentService() {
         super("MyIntentService");
@@ -156,14 +160,26 @@ public class UpdateIntentService extends IntentService {
 
     public void createNotification() {
         mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        NotificationCompat.Builder mBuilder = new NotificationCompat.Builder(this);
-        mBuilder.setSmallIcon(R.mipmap.ic_launcher);
-        mBuilder.setTicker("开始下载");
+        NotificationCompat.Builder builder = null;
+        //notification channel work
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            builder = new NotificationCompat.Builder(getApplicationContext(), mChannelId);
+            NotificationChannel channel = new NotificationChannel(mChannelId,
+                    getString(R.string.app_name), NotificationManager.IMPORTANCE_DEFAULT);
+            mNotificationManager.createNotificationChannel(channel);
+        } else {
+            builder = new NotificationCompat.Builder(getApplicationContext());
+        }
+        builder.setSmallIcon(R.mipmap.ic_launcher);
+        builder.setTicker("开始下载");
         mRemoteViews = new RemoteViews(getPackageName(), R.layout.notification_update);
         mRemoteViews.setProgressBar(R.id.notificationProgress, 100, 0, false);
-        mBuilder.setCustomContentView(mRemoteViews);
-        mNotification = mBuilder.build();
-        mNotification.flags = Notification.FLAG_NO_CLEAR;
+        builder.setCustomContentView(mRemoteViews);
+        mNotification = builder.build();
+        //Notification.FLAG_ONLY_ALERT_ONCE 避免8.0在进度更新时候(notify)中多次响铃
+        //Notification.FLAG_NO_CLEAR 下载过程中无法关闭通知,失败或者完成会切换到可以关闭
+        mNotification.flags = Notification.FLAG_NO_CLEAR|Notification.FLAG_ONLY_ALERT_ONCE;
+        mNotification.icon = R.mipmap.ic_launcher;
         mNotificationManager.notify(0, mNotification);
     }
 
@@ -179,16 +195,21 @@ public class UpdateIntentService extends IntentService {
         File file = (File) msg.obj;
         if (file == null || file.length() == 0) {
             mRemoteViews.setTextViewText(R.id.notification_note_tv, "下载失败  ");
+            //下载失败,flags设置为可关闭
             mNotification.flags = Notification.FLAG_AUTO_CANCEL;
             mNotificationManager.notify(0, mNotification);
             return;
         }
+        //关闭之前的通知,为了兼容某些手机在mNotification.contentIntent后不更新的bug
+        //,保证PendingIntent正确执行
+        mNotificationManager.cancel(0);
         mRemoteViews.setProgressBar(R.id.notificationProgress, 100, 100, false);
         mRemoteViews.setTextViewText(R.id.notification_note_tv, "下载完毕  ");
-        mNotification.flags = Notification.FLAG_AUTO_CANCEL;
+        //下载完成,flags设置为可关闭
+        mNotification.flags = Notification.FLAG_AUTO_CANCEL|Notification.FLAG_ONLY_ALERT_ONCE;
         Intent openFile = getFileIntent(file);
         mNotification.contentIntent = PendingIntent.getActivity(this, 0, openFile, 0);
-        mNotificationManager.notify(0, mNotification);
+        mNotificationManager.notify(1, mNotification);
         startActivity(openFile);
     }
 
@@ -213,7 +234,6 @@ public class UpdateIntentService extends IntentService {
         }
         return type;
     }
-
 
 
 }
